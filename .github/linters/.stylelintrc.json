@@ -1,6 +1,3 @@
 {
-  "extends": "stylelint-config-standard",
-  "rules": {
-    "property-no-vendor-prefix": [true, { "ignoreProperties": ["text-size-adjust"] }]
-  }
+  "extends": "stylelint-config-standard"
 }
