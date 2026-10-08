@@ -1,0 +1,5 @@
+# Check rows pr-merge-when-green waits for when none are passed (one per line).
+# Only rows that run on every PR; pass a path-filtered row as "+<name>".
+lint / lint
+test
+e2e-test
