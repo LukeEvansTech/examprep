@@ -249,11 +249,16 @@ export function openDb(path: string) {
         );
         // A changed transcription invalidates the review (and any corrected answers) made against the old one.
         const prior = db.prepare(`SELECT data FROM questions WHERE id = ?`);
-        const dropReview = db.prepare(`DELETE FROM reviews WHERE question_id = ?`);
+        // Not a delete: a timestamped "unreviewed" row, so a stale review retried later loses.
+        const dropReview = db.prepare(
+          `INSERT INTO reviews (question_id, user_id, status, items, at) VALUES (?, 1, 'unreviewed', NULL, ?)
+           ON CONFLICT (question_id) DO UPDATE SET status = 'unreviewed', items = NULL, at = excluded.at`,
+        );
         for (const q of questions) {
           const old = prior.get(q.id) as { data: string } | undefined;
           const was = old ? (JSON.parse(old.data) as BankQuestion).enrichment?.interactive : undefined;
-          if (old && JSON.stringify(was ?? null) !== JSON.stringify(q.enrichment?.interactive ?? null)) dropReview.run(q.id);
+          if (old && JSON.stringify(was ?? null) !== JSON.stringify(q.enrichment?.interactive ?? null))
+            dropReview.run(q.id, new Date().toISOString());
           up.run(q.id, p.exam.code, q.number, JSON.stringify(q));
         }
         const seen = new Set(questions.map((q) => q.id));

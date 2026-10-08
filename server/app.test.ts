@@ -221,5 +221,13 @@ test("re-importing a changed transcription sends the question back for review", 
   assert.equal(s.reviews.length, 1);
   await app.request("/api/exams/xx-100", { method: "PUT", headers: auth, body: JSON.stringify(bank([hs("d")])) }); // changed
   s = (await (await app.request("/api/exams/xx-100/state")).json()) as UserState;
-  assert.equal(s.reviews.length, 0);
+  assert.equal(s.reviews[0]?.status, "unreviewed");
+  // the old confirmation, retried by a device that queued it before the re-import, must lose
+  await app.request("/api/sync", {
+    method: "POST",
+    headers: auth,
+    body: JSON.stringify({ reviews: [{ questionId: "1", status: "reviewed", at: "2026-10-08T01:00:00Z" }] }),
+  });
+  s = (await (await app.request("/api/exams/xx-100/state")).json()) as UserState;
+  assert.equal(s.reviews[0]?.status, "unreviewed");
 });

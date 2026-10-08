@@ -3,7 +3,7 @@ import { del, set } from "idb-keyval";
 import type { AnswerRow, BankPayload, UserState } from "../../shared/schema.ts";
 import { isCorrect, isInteractive, nextSrs, playable, reconcile, SEP, togglePick, type Mode } from "./logic.ts";
 import { QuestionView, toggleFlagFor } from "./QuestionView.tsx";
-import { record, userKey } from "./store.ts";
+import { record, safe, userKey } from "./store.ts";
 
 export interface Session {
   id: string;
@@ -30,7 +30,7 @@ export function saveSession(s: Session | null, exam: string, immediate = false) 
   const at = new Date().toISOString();
   const data = s && { ...s, updatedAt: at };
   lastWrite = Promise.all([
-    (data ? set(sessionKey(exam), data) : del(sessionKey(exam))).catch(() => {}),
+    safe(() => (data ? set(sessionKey(exam), data) : del(sessionKey(exam))), undefined),
     record({ sessions: [{ exam, data, at }] }, { send: immediate }),
   ]);
   return data;
@@ -72,7 +72,9 @@ const typing = (e: KeyboardEvent) => {
 };
 
 export function Player({ bank, state, setState, initial, onExit, ephemeral }: Props) {
-  const [s, setS] = useState(() => reconcile(initial, bank));
+  // Resume only questions that still exist and are still allowed in practice (a re-import can
+  // send a hotspot back for review).
+  const [s, setS] = useState(() => reconcile(initial, ephemeral ? bank : { questions: bank.questions.filter((q) => playable(q, state)) }));
   const latest = useRef(s); // the timer's expiry callback must grade the answers given since it started
   latest.current = s;
   const update = (fn: (s: Session) => Session, immediate = false) =>

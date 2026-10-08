@@ -10,6 +10,7 @@ import {
   online,
   pending,
   resetProgress,
+  safe,
   setUser,
   signedOut,
   storageFailed,
@@ -157,7 +158,7 @@ function Home({ me }: { me: Me | null }) {
 // still queued here), so a session started on the Mac carries on on the phone.
 async function currentSession(code: string, state: UserState): Promise<Session | null> {
   await lastWrite;
-  const local = await get<Session>(sessionKey(code)).catch(() => undefined);
+  const local = await safe(() => get<Session>(sessionKey(code)), undefined);
   const remote = state.session;
   if (remote && (!local || remote.at > local.updatedAt)) return (remote.data as Session | null) ?? null;
   return local ?? null;

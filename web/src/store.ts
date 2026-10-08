@@ -34,9 +34,11 @@ export const online = signal(navigator.onLine);
 export const signedOut = signal(false); // a 401 mid-session (expired, or signed out in another tab)
 export const pending = signal(0);
 
-const safe = async <T>(p: Promise<T>, fallback: T) => {
+// Storage calls go in as thunks: with storage disabled, IndexedDB can throw synchronously,
+// before a promise exists to reject.
+export const safe = async <T>(fn: () => Promise<T>, fallback: T) => {
   try {
-    return await p;
+    return await fn();
   } catch {
     return fallback;
   }
@@ -46,13 +48,13 @@ let userId: number | null = null;
 // Call once at start-up with the signed-in user, or null when the server can't be reached
 // (then the last user seen on this device carries on offline).
 export async function setUser(id: number | null) {
-  if (id != null) await safe(set("lastUser", id), undefined);
-  userId = id ?? (await safe(get<number>("lastUser"), undefined)) ?? 0;
+  if (id != null) await safe(() => set("lastUser", id), undefined);
+  userId = id ?? (await safe(() => get<number>("lastUser"), undefined)) ?? 0;
 }
 export const userKey = (k: string) => `u${userId ?? 0}:${k}`;
 // Signing out drops the offline identity, so an offline launch afterwards shows nobody's data.
 export async function forgetUser() {
-  await safe(set("lastUser", 0), undefined);
+  await safe(() => set("lastUser", 0), undefined);
 }
 
 // Private calls say whose data they carry. If the browser's sign-in has since changed to
@@ -77,21 +79,21 @@ async function fetchJson<T>(url: string): Promise<T> {
 export async function loadExams(): Promise<ExamSummary[]> {
   try {
     const list = await fetchJson<ExamSummary[]>("/api/exams");
-    await safe(set("exams", list), undefined);
+    await safe(() => set("exams", list), undefined);
     return list;
   } catch {
-    return (await safe(get<ExamSummary[]>("exams"), undefined)) ?? [];
+    return (await safe(() => get<ExamSummary[]>("exams"), undefined)) ?? [];
   }
 }
 
 export async function loadBank(code: string): Promise<BankPayload | null> {
   try {
     const bank = await fetchJson<BankPayload>(`/api/exams/${code}/bank`);
-    await safe(set(`bank:${code}`, bank), undefined);
+    await safe(() => set(`bank:${code}`, bank), undefined);
     warmImages(bank);
     return bank;
   } catch {
-    return (await safe(get<BankPayload>(`bank:${code}`), undefined)) ?? null;
+    return (await safe(() => get<BankPayload>(`bank:${code}`), undefined)) ?? null;
   }
 }
 
@@ -114,7 +116,7 @@ function warmImages(bank: BankPayload) {
 }
 
 async function questionIds(code: string): Promise<Set<string>> {
-  const bank = await safe(get<BankPayload>(`bank:${code}`), undefined);
+  const bank = await safe(() => get<BankPayload>(`bank:${code}`), undefined);
   return new Set(bank?.questions.map((q) => q.id) ?? []);
 }
 
@@ -131,9 +133,9 @@ export async function loadState(code: string): Promise<UserState> {
       const started = new Date().toISOString();
       const fetched = await fetchJson<UserState>(`/api/exams/${code}/state`);
       await locked(async () => {
-        const acked = (await safe(get<string>(userKey("ackAt")), undefined)) ?? "";
+        const acked = (await safe(() => get<string>(userKey("ackAt")), undefined)) ?? "";
         if (acked > started) return;
-        await safe(set(cacheKey, fetched), undefined);
+        await safe(() => set(cacheKey, fetched), undefined);
         state = fetched;
       });
     }
@@ -145,7 +147,7 @@ export async function loadState(code: string): Promise<UserState> {
   const ids = await questionIds(code);
   let merged: UserState = EMPTY;
   await locked(async () => {
-    const base = (await safe(get<UserState>(cacheKey), undefined)) ?? state ?? EMPTY;
+    const base = (await safe(() => get<UserState>(cacheKey), undefined)) ?? state ?? EMPTY;
     merged = applyPush(structuredClone(base), forExam(await outbox(), code, ids));
   });
   return merged;
@@ -156,8 +158,8 @@ export async function loadState(code: string): Promise<UserState> {
 export const storageFailed = signal(false);
 let memoryBox: SyncPush | null = null;
 async function outbox(): Promise<SyncPush> {
-  if (memoryBox) return memoryBox;
-  return (await safe(get<SyncPush>(userKey("outbox")), undefined)) ?? {};
+  if (memoryBox) return structuredClone(memoryBox); // a snapshot: later records mustn't change what was sent
+  return (await safe(() => get<SyncPush>(userKey("outbox")), undefined)) ?? {};
 }
 
 const count = (p: SyncPush) => Object.values(p).reduce((n, rows) => n + (rows?.length ?? 0), 0);
@@ -227,13 +229,18 @@ export async function record(push: SyncPush, { send = true } = {}) {
 // Fold acknowledged rows into each cached exam state before they leave the outbox, so a
 // reload with no signal still shows them.
 async function persistAcknowledged(sent: SyncPush) {
-  await safe(set(userKey("ackAt"), new Date().toISOString()), undefined);
+  await safe(() => set(userKey("ackAt"), new Date().toISOString()), undefined);
   const prefix = userKey("state:");
-  const stateKeys = ((await safe(keys(), [])) as IDBValidKey[]).filter((k): k is string => typeof k === "string" && k.startsWith(prefix));
+  const stateKeys = ((await safe(() => keys(), [])) as IDBValidKey[]).filter(
+    (k): k is string => typeof k === "string" && k.startsWith(prefix),
+  );
   for (const key of stateKeys) {
     const code = key.slice(prefix.length);
-    const cached = await safe(get<UserState>(key), undefined);
-    if (cached) await safe(set(key, applyPush(cached, forExam(sent, code, await questionIds(code)))), undefined);
+    const cached = await safe(() => get<UserState>(key), undefined);
+    if (cached) {
+      const ids = await questionIds(code);
+      await safe(() => set(key, applyPush(cached, forExam(sent, code, ids))), undefined);
+    }
   }
 }
 
@@ -281,8 +288,8 @@ export async function resetProgress(code: string): Promise<boolean> {
     if (!r.ok) return false;
     // Mirror the reset in this device's offline copy too (notes and overrides stay).
     const key = userKey(`state:${code}`);
-    const cached = await safe(get<UserState>(key), undefined);
-    if (cached) await safe(set(key, { ...cached, session: null, results: [], answers: [], srs: [], flags: [] }), undefined);
+    const cached = await safe(() => get<UserState>(key), undefined);
+    if (cached) await safe(() => set(key, { ...cached, session: null, results: [], answers: [], srs: [], flags: [] }), undefined);
     return true;
   } catch {
     return false;
