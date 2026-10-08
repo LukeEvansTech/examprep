@@ -92,7 +92,13 @@ function Choices({
           .filter(Boolean)
           .join(" ");
         return (
-          <button class={cls} onClick={() => pick(c.letter)} disabled={locked} role={multi ? "checkbox" : "radio"} aria-checked={chosen}>
+          <button
+            class={cls}
+            onClick={(e) => !(e.target as Element).closest("a") && pick(c.letter)}
+            disabled={locked}
+            role={multi ? "checkbox" : "radio"}
+            aria-checked={chosen}
+          >
             <span class="letter">{c.letter}</span>
             <span class="text" dangerouslySetInnerHTML={{ __html: sanitize(c.html, exam) }} />
           </button>

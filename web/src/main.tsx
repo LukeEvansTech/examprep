@@ -388,7 +388,8 @@ function ExamHome({
           </thead>
           <tbody>
             {topics.map((t) => {
-              const p = t.seen ? Math.round((t.correct / t.seen) * 100) : null;
+              const exact = t.seen ? (t.correct / t.seen) * 100 : null;
+              const p = exact == null ? null : Math.round(exact);
               return (
                 <tr>
                   <td>{t.topic.replace(/^Topic \d+,\s*/, "")}</td>
@@ -396,7 +397,7 @@ function ExamHome({
                     {t.seen}/{t.total}
                   </td>
                   <td>
-                    <span class={`meter ${p == null ? "" : p >= bank.exam.settings.passPct ? "ok" : "bad"}`}>
+                    <span class={`meter ${exact == null ? "" : exact >= bank.exam.settings.passPct ? "ok" : "bad"}`}>
                       {p == null ? "—" : `${p}%`}
                     </span>
                   </td>
@@ -412,9 +413,10 @@ function ExamHome({
         ) : (
           <ol class="history">
             {results.map((r) => {
-              const p = Math.round((r.correct / r.total) * 100);
+              const exact = (r.correct / r.total) * 100;
+              const p = Math.round(exact);
               return (
-                <li class={p >= bank.exam.settings.passPct ? "ok" : "bad"}>
+                <li class={exact >= bank.exam.settings.passPct ? "ok" : "bad"}>
                   <span>{new Date(r.at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span>
                   <span class="bar-track">
                     <span class="bar-fill" style={{ width: `${p}%` }} />

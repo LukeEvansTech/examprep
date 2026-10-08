@@ -95,14 +95,22 @@ export async function loadBank(code: string): Promise<BankPayload | null> {
   }
 }
 
-// Fetch every image once so the service worker has it before the next train journey.
+// Fetch every image once so the service worker has it before the next train journey. On a
+// first visit the worker may still be installing; requests made before it controls the page
+// would bypass its cache, so wait for it.
 function warmImages(bank: BankPayload) {
   const names = new Set<string>();
   for (const q of bank.questions) {
     q.images.forEach((n) => names.add(n));
     if (q.suggestedImage) names.add(q.suggestedImage);
+    for (const c of q.choices) for (const m of c.html.matchAll(/src="([^"]+)"/g)) names.add(m[1].split("/").pop()!);
   }
-  for (const n of names) fetch(`/img/${bank.exam.code}/${n}`).catch(() => {});
+  const warm = () => {
+    for (const n of names) fetch(`/img/${bank.exam.code}/${n}`).catch(() => {});
+  };
+  const sw = navigator.serviceWorker;
+  if (!sw || sw.controller) warm();
+  else sw.addEventListener("controllerchange", warm, { once: true });
 }
 
 async function questionIds(code: string): Promise<Set<string>> {
@@ -132,8 +140,15 @@ export async function loadState(code: string): Promise<UserState> {
   } catch {
     // offline: the cache below
   }
-  state ??= (await safe(get<UserState>(cacheKey), undefined)) ?? EMPTY;
-  return applyPush(structuredClone(state), forExam(await outbox(), code, await questionIds(code)));
+  // Read the cache (which now holds the fresh snapshot or newer acknowledged rows) and the
+  // queue together, so a sync finishing in between can't drop rows from both.
+  const ids = await questionIds(code);
+  let merged: UserState = EMPTY;
+  await locked(async () => {
+    const base = (await safe(get<UserState>(cacheKey), undefined)) ?? state ?? EMPTY;
+    merged = applyPush(structuredClone(base), forExam(await outbox(), code, ids));
+  });
+  return merged;
 }
 
 async function outbox(): Promise<SyncPush> {

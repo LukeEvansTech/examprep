@@ -175,6 +175,9 @@ export function Player({ bank, state, setState, initial, onExit, ephemeral }: Pr
       if (k === "m" && isExam) return toggleMark();
       if (k === "arrowleft" && s.index > 0) return go(s.index - 1);
       if (k === "enter" || k === "arrowright") {
+        // Enter on a focused button or link keeps its own action (keyboard users tab to choices).
+        const t = e.target as HTMLElement | null;
+        if (k === "enter" && t?.closest("button, a")) return;
         e.preventDefault();
         if (canAdvance) advance();
         else if (!isExam) reveal(given);
@@ -305,8 +308,9 @@ function Results({
   const [open, setOpen] = useState<string | null>(null);
   const qs = s.ids.map((id) => bank.questions.find((q) => q.id === id)!).filter(Boolean);
   const right = qs.filter((q) => s.given[q.id] && isCorrect(q, state, s.given[q.id]));
-  const pct = qs.length ? Math.round((right.length / qs.length) * 100) : 0;
-  const pass = pct >= bank.exam.settings.passPct;
+  const exact = qs.length ? (right.length / qs.length) * 100 : 0;
+  const pct = Math.round(exact); // display only: 69.6% must not pass at 70
+  const pass = exact >= bank.exam.settings.passPct;
   const shown = open ? qs.find((q) => q.id === open) : null;
 
   if (shown)
