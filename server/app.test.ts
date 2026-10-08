@@ -92,7 +92,7 @@ test("sync is idempotent and last-write-wins", async () => {
 
 test("images: upload with key, served without", async () => {
   const app = setup();
-  const png = new Uint8Array([137, 80, 78, 71]);
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   const bad = await app.request("/api/exams/xx-100/images/../x.png", {
     method: "PUT",
     headers: { authorization: `Bearer ${KEY}` },
@@ -172,4 +172,25 @@ test("a pre-reset queue retried after a reset can't bring progress back", async 
     ["a2"],
   );
   assert.equal(s.flags.length, 0);
+});
+
+test("uploads that aren't real images are refused, and the type comes from the bytes", async () => {
+  const app = setup();
+  const html = new TextEncoder().encode("<script>alert(1)</script>");
+  const bad = await app.request("/api/exams/xx-100/images/x.png", {
+    method: "PUT",
+    headers: { authorization: `Bearer ${KEY}`, "content-type": "image/png" },
+    body: html,
+  });
+  assert.equal(bad.status, 415);
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]);
+  await app.request("/api/exams/xx-100/images/y.png", {
+    method: "PUT",
+    headers: { authorization: `Bearer ${KEY}`, "content-type": "text/html" },
+    body: png,
+  });
+  const got = await app.request("/img/xx-100/y.png");
+  assert.equal(got.headers.get("content-type"), "image/png");
+  assert.equal(got.headers.get("x-content-type-options"), "nosniff");
+  assert.match(got.headers.get("cache-control") ?? "", /private/);
 });

@@ -106,3 +106,14 @@ test("tampered login state is rejected", async () => {
   const r = await app.request(`${APP}/auth/callback/mock?code=x&state=y`, { headers: { cookie: cookieHeader(jar) } });
   assert.equal(r.status, 400);
 });
+
+test("an active session renews the browser cookie, not just the server row", async () => {
+  const { app, db } = setup();
+  const jar = await signIn(app);
+  const fresh = await app.request(`${APP}/api/exams`, { headers: { cookie: cookieHeader(jar) } });
+  assert.equal(fresh.headers.getSetCookie().length, 0); // nothing to renew yet
+  db.raw.exec(`UPDATE auth_sessions SET expires_at = '${new Date(Date.now() + 5 * 86400_000).toISOString()}'`);
+  const later = await app.request(`${APP}/api/exams`, { headers: { cookie: cookieHeader(jar) } });
+  const renewed = later.headers.getSetCookie().find((c) => c.startsWith("ep_session="));
+  assert.ok(renewed && /Max-Age=2592000/.test(renewed), renewed);
+});

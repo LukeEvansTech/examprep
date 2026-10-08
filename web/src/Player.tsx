@@ -159,14 +159,14 @@ export function Player({ bank, state, setState, initial, onExit, ephemeral }: Pr
   const last = s.index === qs.length - 1;
   const advance = () => (last ? (ephemeral ? done() : finish()) : go(s.index + 1));
 
-  // VCE-style keys: A–F or 1–6 pick, Enter/→ next (or show answer), ← back, F flag, M mark.
+  // VCE-style keys: A–F or 1–6 pick, Enter/→ next (or show answer), ← back, S flag (star), M mark.
   useEffect(() => {
     if (s.finished || !q) return;
     const onKey = (e: KeyboardEvent) => {
       if (typing(e) || e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key.toLowerCase();
       const idx = "abcdef".indexOf(k) >= 0 ? "abcdef".indexOf(k) : "123456".indexOf(k);
-      if (k === "f") return toggleFlagFor(q, state, setState);
+      if (k === "s") return toggleFlagFor(q, state, setState);
       if (idx >= 0 && !isInteractive(q) && (isExam || !checked)) {
         const letter = q.choices[idx]?.letter;
         if (letter) pick(togglePick(q, given, letter));
@@ -238,7 +238,7 @@ export function Player({ bank, state, setState, initial, onExit, ephemeral }: Pr
           </button>
         )}
       </div>
-      <p class="keys">Keys: A–F pick · Enter next · ← back · F flag{isExam ? " · M mark" : ""}</p>
+      <p class="keys">Keys: A–F pick · Enter next · ← back · S flag{isExam ? " · M mark" : ""}</p>
 
       {isExam && (
         <nav class="grid" aria-label="Questions">

@@ -2,7 +2,18 @@ import { render } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { get } from "idb-keyval";
 import type { BankPayload, BankQuestion, UserState } from "../../shared/schema.ts";
-import { forgetUser, loadBank, loadExams, loadState, online, pending, resetProgress, setUser, type ExamSummary } from "./store.ts";
+import {
+  forgetUser,
+  loadBank,
+  loadExams,
+  loadState,
+  online,
+  pending,
+  resetProgress,
+  setUser,
+  signedOut,
+  type ExamSummary,
+} from "./store.ts";
 import { pickQuestions, stats, topicStats, type Mode } from "./logic.ts";
 import { lastWrite, MODE_NAME, Player, saveSession, sessionKey, type Session } from "./Player.tsx";
 import { Review } from "./Review.tsx";
@@ -46,7 +57,7 @@ function App() {
         <p class="muted">Loading…</p>
       </main>
     );
-  if (me && !me.user) return <Login providers={me.providers} />;
+  if (me && (!me.user || signedOut.value)) return <Login providers={me.providers} />;
 
   const m = /^\/x\/([a-z0-9-]+)(?:\/(play|review|browse))?$/.exec(path);
   return (

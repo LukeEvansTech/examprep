@@ -70,6 +70,8 @@ export function createAuth(db: Db, opts: AuthOptions) {
     }
     return c;
   };
+  const setSessionCookie = (c: Context, token: string) =>
+    setCookie(c, SESSION_COOKIE, token, { httpOnly: true, secure, sameSite: "Lax", path: "/", maxAge: SESSION_DAYS * 86400 });
   const redirectUri = (p: Provider) => `${opts.appUrl}/auth/callback/${p.id}`;
 
   // Resolve the request's user, or null when sign-in is required and missing.
@@ -77,9 +79,10 @@ export function createAuth(db: Db, opts: AuthOptions) {
     if (!enabled) return db.userId("local", "local");
     const token = getCookie(c, SESSION_COOKIE);
     if (!token) return null;
-    const userId = db.sessionUser(token);
-    if (userId == null) return null;
-    return userId;
+    const found = db.sessionUser(token);
+    if (!found) return null;
+    if (found.renewed) setSessionCookie(c, token);
+    return found.userId;
   }
 
   function routes(app: Hono<{ Variables: { userId: number } }>) {
@@ -134,7 +137,7 @@ export function createAuth(db: Db, opts: AuthOptions) {
         const userId = db.signIn(claims.iss, claims.sub, name, (claims.email as string | undefined) ?? null);
         const token = randomBytes(32).toString("base64url");
         db.createSession(token, userId, SESSION_DAYS);
-        setCookie(c, SESSION_COOKIE, token, { httpOnly: true, secure, sameSite: "Lax", path: "/", maxAge: SESSION_DAYS * 86400 });
+        setSessionCookie(c, token);
         return c.redirect("/");
       } catch (e) {
         console.error("oidc callback failed:", (e as Error).message);

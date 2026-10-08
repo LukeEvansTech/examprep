@@ -1,6 +1,6 @@
 // App shell, hashed assets and question images, so a session works with no signal.
 // Bank and progress data are cached by the app itself in IndexedDB (src/store.ts).
-const CACHE = "examprep-v4";
+const CACHE = "examprep-v5";
 
 // Precache the shell and the hashed bundles it references, so the very first offline launch works.
 self.addEventListener("install", (e) => {
@@ -32,7 +32,7 @@ const cacheFirst = async (req) => {
 const staleWhileRevalidate = async (req, e) => {
   const cache = await caches.open(CACHE);
   const hit = await cache.match(req);
-  const refresh = fetch(req)
+  const refresh = fetch(req, { cache: "no-cache" }) // revalidate past the HTTP cache too
     .then((res) => {
       if (res.ok) cache.put(req, res.clone());
       return res;

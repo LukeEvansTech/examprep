@@ -11,7 +11,7 @@ certification question banks on a Mac or an iPhone.
 - **Hotspot questions** are interactive, with a review queue for transcriptions.
 - **Offline**: an installable PWA that caches the bank and queues answers until it can sync. Sessions resume across devices.
 - **Sign-in** through any OIDC provider, configured per deployment. With none configured it runs as a single local user.
-- **Keyboard**: A–F pick, Enter next, ← back, F flag, M mark.
+- **Keyboard**: A–F pick, Enter next, ← back, S flag, M mark.
 
 The repository holds code only. Question banks are uploaded to a running instance through
 its API and stored in its database; none are committed here.

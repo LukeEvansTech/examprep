@@ -31,6 +31,7 @@ const EMPTY: UserState = {
 };
 
 export const online = signal(navigator.onLine);
+export const signedOut = signal(false); // a 401 mid-session (expired, or signed out in another tab)
 export const pending = signal(0);
 
 const safe = async <T>(p: Promise<T>, fallback: T) => {
@@ -62,6 +63,7 @@ function api(url: string, init: RequestInit = {}) {
   if (userId) headers.set("x-examprep-user", String(userId));
   return fetch(url, { ...init, headers }).then((r) => {
     if (r.status === 409) location.reload();
+    if (r.status === 401) signedOut.value = true; // the outbox stays queued for after sign-in
     return r;
   });
 }
@@ -214,9 +216,10 @@ export function flush(): Promise<void> {
         body: JSON.stringify(box),
       });
       if (!r.ok) return;
-      await persistAcknowledged(box);
-      // Only drop what was sent; rows recorded (or replaced) during the request stay queued.
-      await withBox((now) => {
+      // Fold the acknowledged rows into the offline cache and drop them from the outbox in one
+      // critical section, so two tabs can't interleave and overwrite each other's cache merges.
+      await withBox(async (now) => {
+        await persistAcknowledged(box);
         const n = now as Rows;
         for (const [k, rows] of Object.entries(box as Rows)) {
           const sent = new Set(rows.map((row) => JSON.stringify(row)));

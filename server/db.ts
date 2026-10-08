@@ -217,14 +217,15 @@ export function openDb(path: string) {
     },
 
     // Sliding expiry: each use pushes the session out another 30 days.
-    sessionUser(token: string): number | null {
+    // `renewed` tells the caller to re-issue the cookie with the new lifetime.
+    sessionUser(token: string): { userId: number; renewed: boolean } | null {
       const row = db.prepare(`SELECT user_id, expires_at FROM auth_sessions WHERE token_hash = ?`).get(hash(token)) as
         | { user_id: number; expires_at: string }
         | undefined;
       if (!row || row.expires_at < new Date().toISOString()) return null;
-      if (Date.parse(row.expires_at) - Date.now() < 29 * 86400_000)
-        db.prepare(`UPDATE auth_sessions SET expires_at = ? WHERE token_hash = ?`).run(later(30), hash(token));
-      return row.user_id;
+      const renewed = Date.parse(row.expires_at) - Date.now() < 29 * 86400_000;
+      if (renewed) db.prepare(`UPDATE auth_sessions SET expires_at = ? WHERE token_hash = ?`).run(later(30), hash(token));
+      return { userId: row.user_id, renewed };
     },
 
     deleteSession(token: string) {

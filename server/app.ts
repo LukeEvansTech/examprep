@@ -13,6 +13,17 @@ export interface AppOptions {
 }
 
 const IMAGE_NAME = /^[\w.-]{1,100}\.(png|jpe?g|gif|webp)$/i;
+
+// The stored type comes from the bytes, never from the uploader, so nothing but a real raster
+// image can ever be served from /img.
+export function sniffImage(b: Uint8Array): string | null {
+  const at = (i: number, ...bytes: number[]) => bytes.every((x, j) => b[i + j] === x);
+  if (at(0, 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return "image/png";
+  if (at(0, 0xff, 0xd8, 0xff)) return "image/jpeg";
+  if (at(0, 0x47, 0x49, 0x46, 0x38)) return "image/gif";
+  if (at(0, 0x52, 0x49, 0x46, 0x46) && at(8, 0x57, 0x45, 0x42, 0x50)) return "image/webp";
+  return null;
+}
 const EXAM_CODE = /^[a-z0-9-]{2,40}$/;
 
 function keyMatches(c: Context, key?: string) {
@@ -70,7 +81,10 @@ export function createApp({ db, uploadKey, auth: authOpts }: AppOptions) {
     if (!keyMatches(c, uploadKey)) return c.json({ error: "unauthorised" }, 401);
     const { code, name } = c.req.param();
     if (!EXAM_CODE.test(code) || !IMAGE_NAME.test(name)) return c.json({ error: "bad name" }, 400);
-    db.putImage(code, name, c.req.header("content-type") ?? "image/png", new Uint8Array(await c.req.arrayBuffer()));
+    const bytes = new Uint8Array(await c.req.arrayBuffer());
+    const mime = sniffImage(bytes);
+    if (!mime) return c.json({ error: "not a PNG, JPEG, GIF or WebP image" }, 415);
+    db.putImage(code, name, mime, bytes);
     return c.json({ ok: true });
   });
 
@@ -79,7 +93,8 @@ export function createApp({ db, uploadKey, auth: authOpts }: AppOptions) {
     if (!img) return c.notFound();
     return c.body(new Uint8Array(img.bytes).buffer as ArrayBuffer, 200, {
       "content-type": img.mime,
-      "cache-control": "public, max-age=86400",
+      "x-content-type-options": "nosniff",
+      "cache-control": "private, max-age=86400", // behind sign-in: no shared cache may reuse it
     });
   });
 
