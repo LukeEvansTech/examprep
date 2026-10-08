@@ -24,8 +24,13 @@ export function isCorrect(q: BankQuestion, s: UserState, given: string) {
 }
 
 // Interactive questions stay out of practice until their transcription is confirmed.
+const imageOnly = (q: BankQuestion) => q.kind === "hotspot" || q.kind === "dragdrop";
+
+// Image-only questions count only once they have a transcription and it has been reviewed;
+// without one there is nothing to answer.
 export function playable(q: BankQuestion, s: UserState) {
-  if (!isInteractive(q)) return true;
+  if (!imageOnly(q) && !isInteractive(q)) return true;
+  if (!isInteractive(q)) return false;
   return q.enrichment!.review === "reviewed" || s.reviews.some((r) => r.questionId === q.id && r.status === "reviewed");
 }
 

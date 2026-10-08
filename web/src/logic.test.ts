@@ -99,3 +99,8 @@ test("unreviewed hotspot questions are left out of practice", () => {
   s.reviews = [{ questionId: "9", status: "reviewed", at: "2026-10-08T01:00:00Z" }];
   assert.equal(pickQuestions([hs], s, { mode: "study" }).length, 1);
 });
+
+test("image-only questions without a transcription never enter practice", () => {
+  const bare = q("7", "T", { kind: "hotspot", choices: [], suggested: null, suggestedImage: "x.png" });
+  assert.equal(pickQuestions([bare], empty(), { mode: "exam" }).length, 0);
+});

@@ -85,7 +85,7 @@ export function createAuth(db: Db, opts: AuthOptions) {
   function routes(app: Hono<{ Variables: { userId: number } }>) {
     app.get("/api/me", (c) => {
       const providers = opts.providers.map(({ id, name }) => ({ id, name }));
-      if (!enabled) return c.json({ user: { name: "Local", local: true }, providers });
+      if (!enabled) return c.json({ user: { ...db.user(db.userId("local", "local")), local: true }, providers });
       const id = userFor(c);
       return c.json({ user: id == null ? null : db.user(id), providers });
     });

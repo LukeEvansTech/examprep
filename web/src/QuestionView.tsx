@@ -55,7 +55,7 @@ export function QuestionView({ q, exam, state, given, onChange, revealed, onStat
         <Choices q={q} exam={exam} given={given} onChange={onChange} locked={locked} revealed={revealed} state={state} />
       )}
 
-      {revealed && <Reveal q={q} exam={exam} state={state} given={given} onState={onState} />}
+      {revealed && <Reveal key={q.id} q={q} exam={exam} state={state} given={given} onState={onState} />}
     </article>
   );
 }

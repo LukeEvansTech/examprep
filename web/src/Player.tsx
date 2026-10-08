@@ -3,7 +3,7 @@ import { del, set } from "idb-keyval";
 import type { AnswerRow, BankPayload, UserState } from "../../shared/schema.ts";
 import { isCorrect, isInteractive, nextSrs, SEP, togglePick, type Mode } from "./logic.ts";
 import { QuestionView, toggleFlagFor } from "./QuestionView.tsx";
-import { record } from "./store.ts";
+import { record, userKey } from "./store.ts";
 
 export interface Session {
   id: string;
@@ -20,7 +20,7 @@ export interface Session {
   finished?: boolean;
 }
 
-export const sessionKey = (exam: string) => `session:${exam}`;
+export const sessionKey = (exam: string) => userKey(`session:${exam}`);
 export const MODE_NAME: Record<Mode, string> = { exam: "Exam", study: "Study", weak: "Weak spots", srs: "Spaced repetition" };
 
 // Every change is kept on this device straight away and queued for the server at most every
@@ -54,7 +54,8 @@ function grade(bank: BankPayload, state: UserState, s: Session, ids: string[]) {
   const srs = [];
   let next = state;
   for (const id of ids) {
-    const q = bank.questions.find((x) => x.id === id)!;
+    const q = bank.questions.find((x) => x.id === id);
+    if (!q) continue; // archived by a re-import since the session started
     const given = s.given[id] ?? "";
     const correct = !!given && isCorrect(q, next, given);
     answers.push({ id: crypto.randomUUID(), questionId: id, exam: s.exam, mode: s.mode, given, correct, at: at.toISOString() });
@@ -104,15 +105,16 @@ export function Player({ bank, state, setState, initial, onExit, ephemeral }: Pr
           cur.ids.filter((id) => cur.given[id]),
         ),
       );
-      const correct = cur.ids.filter((id) => {
-        const x = bank.questions.find((b) => b.id === id);
-        return x && cur.given[id] && isCorrect(x, state, cur.given[id]);
+      const live = cur.ids.filter((id) => bank.questions.some((b) => b.id === id)); // skip any archived since
+      const correct = live.filter((id) => {
+        const x = bank.questions.find((b) => b.id === id)!;
+        return cur.given[id] && isCorrect(x, state, cur.given[id]);
       }).length;
       const result = {
         id: cur.id,
         exam: cur.exam,
         at: new Date().toISOString(),
-        total: cur.ids.length,
+        total: live.length,
         correct,
         seconds: Math.round((Date.now() - Date.parse(cur.startedAt)) / 1000),
       };

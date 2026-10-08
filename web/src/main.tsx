@@ -2,7 +2,7 @@ import { render } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { get } from "idb-keyval";
 import type { BankPayload, BankQuestion, UserState } from "../../shared/schema.ts";
-import { loadBank, loadExams, loadState, online, pending, resetProgress, type ExamSummary } from "./store.ts";
+import { loadBank, loadExams, loadState, online, pending, resetProgress, setUser, type ExamSummary } from "./store.ts";
 import { pickQuestions, stats, topicStats, type Mode } from "./logic.ts";
 import { lastWrite, MODE_NAME, Player, saveSession, sessionKey, type Session } from "./Player.tsx";
 import { Review } from "./Review.tsx";
@@ -23,7 +23,7 @@ const useHash = () => {
 const nav = (to: string) => (location.hash = to);
 
 interface Me {
-  user: { name: string; email?: string | null; local?: boolean } | null;
+  user: { id: number; name: string; email?: string | null; local?: boolean } | null;
   providers: { id: string; name: string }[];
 }
 
@@ -33,8 +33,12 @@ function App() {
   const [me, setMe] = useState<Me | null | undefined>();
   useEffect(() => {
     fetch("/api/me")
-      .then((r) => (r.ok ? r.json() : null))
-      .then(setMe, () => setMe(null));
+      .then((r) => (r.ok ? (r.json() as Promise<Me>) : null))
+      .catch(() => null)
+      .then(async (m) => {
+        await setUser(m?.user?.id ?? null); // private storage is per user; offline keeps the last one
+        setMe(m);
+      });
   }, []);
   if (me === undefined)
     return (
