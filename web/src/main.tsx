@@ -51,6 +51,18 @@ function App() {
         setMe(m);
       });
   }, []);
+  // Launched offline (me === null) and later told the session has expired: fetch the
+  // sign-in options so the login screen can be shown.
+  const out = signedOut.value;
+  useEffect(() => {
+    if (out && !me)
+      fetch("/api/me")
+        .then((r) => (r.ok ? (r.json() as Promise<Me>) : null))
+        .then(
+          (m) => m && setMe(m),
+          () => {},
+        );
+  }, [out]);
   if (me === undefined)
     return (
       <main class="empty">

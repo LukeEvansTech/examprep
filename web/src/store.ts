@@ -113,20 +113,26 @@ async function questionIds(code: string): Promise<Set<string>> {
 // Server state plus anything still waiting in the outbox, so offline edits show at once.
 export async function loadState(code: string): Promise<UserState> {
   await flush();
-  let state: UserState;
+  const cacheKey = userKey(`state:${code}`);
+  let state: UserState | null = null;
   try {
-    // If a sync (from any tab) was acknowledged while this GET was in flight, the response may
-    // predate it; fetch again rather than cache a snapshot older than what the cache already has.
-    for (let attempt = 0; ; attempt++) {
+    // A sync acknowledged (by any tab) while this GET was in flight means the response may predate
+    // it. The check and the cache write share the outbox lock with acknowledgement merges, so a
+    // stale snapshot can never overwrite them; after three stale tries, use the cache instead.
+    for (let attempt = 0; attempt < 3 && !state; attempt++) {
       const started = new Date().toISOString();
-      state = await fetchJson<UserState>(`/api/exams/${code}/state`);
-      const acked = (await safe(get<string>(userKey("ackAt")), undefined)) ?? "";
-      if (acked <= started || attempt === 2) break;
+      const fetched = await fetchJson<UserState>(`/api/exams/${code}/state`);
+      await locked(async () => {
+        const acked = (await safe(get<string>(userKey("ackAt")), undefined)) ?? "";
+        if (acked > started) return;
+        await safe(set(cacheKey, fetched), undefined);
+        state = fetched;
+      });
     }
-    await safe(set(userKey(`state:${code}`), state), undefined);
   } catch {
-    state = (await safe(get<UserState>(userKey(`state:${code}`)), undefined)) ?? EMPTY;
+    // offline: the cache below
   }
+  state ??= (await safe(get<UserState>(cacheKey), undefined)) ?? EMPTY;
   return applyPush(structuredClone(state), forExam(await outbox(), code, await questionIds(code)));
 }
 
@@ -151,15 +157,17 @@ const KEY: Partial<Record<keyof SyncPush, (r: QueuedRow) => string | undefined>>
 // Every read-modify-write of the outbox goes through here. The Web Locks API makes it atomic
 // across tabs and the installed app as well; the promise chain covers browsers without it.
 let boxLock: Promise<unknown> = Promise.resolve();
-function withBox(fn: (box: SyncPush) => SyncPush | Promise<SyncPush>): Promise<void> {
-  const body = async () => {
-    const next = await fn(await outbox());
-    await safe(set(userKey("outbox"), next), undefined);
-    pending.value = count(next);
-  };
+function locked(body: () => Promise<void>): Promise<void> {
   const run = boxLock.then(() => (navigator.locks ? navigator.locks.request(userKey("outbox"), body) : body()));
   boxLock = run.catch(() => {});
   return run;
+}
+function withBox(fn: (box: SyncPush) => SyncPush | Promise<SyncPush>): Promise<void> {
+  return locked(async () => {
+    const next = await fn(await outbox());
+    await safe(set(userKey("outbox"), next), undefined);
+    pending.value = count(next);
+  });
 }
 
 let sendTimer: ReturnType<typeof setTimeout> | undefined;

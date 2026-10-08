@@ -115,5 +115,6 @@ test("an active session renews the browser cookie, not just the server row", asy
   db.raw.exec(`UPDATE auth_sessions SET expires_at = '${new Date(Date.now() + 5 * 86400_000).toISOString()}'`);
   const later = await app.request(`${APP}/api/exams`, { headers: { cookie: cookieHeader(jar) } });
   const renewed = later.headers.getSetCookie().find((c) => c.startsWith("ep_session="));
-  assert.ok(renewed && /Max-Age=2592000/.test(renewed), renewed);
+  assert.ok(renewed, "expected a renewed ep_session cookie");
+  assert.match(renewed, /Max-Age=2592000/);
 });
