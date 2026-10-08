@@ -1,4 +1,5 @@
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
+import { transcriptionRev } from "../shared/rev.ts";
 import { createHash } from "node:crypto";
 import type {
   AnswerRow,
@@ -327,7 +328,14 @@ export function openDb(path: string) {
         for (const o of p.overrides ?? []) put.override.run(userId, o.questionId, o.answer, o.at);
         for (const n of p.notes ?? []) put.note.run(userId, n.questionId, n.text, n.at);
         for (const f of p.flags ?? []) if (freshQ(f.questionId, f.at)) put.flag.run(userId, f.questionId, f.flagged ? 1 : 0, f.at);
-        for (const r of p.reviews ?? []) put.review.run(r.questionId, userId, r.status, r.items ? JSON.stringify(r.items) : null, r.at);
+        // A confirmation only counts against the transcription it was made on.
+        const current = db.prepare(`SELECT data FROM questions WHERE id = ?`);
+        for (const r of p.reviews ?? []) {
+          const q = current.get(r.questionId) as { data: string } | undefined;
+          const rev = q ? transcriptionRev((JSON.parse(q.data) as BankQuestion).enrichment?.interactive) : null;
+          if (r.status === "reviewed" && r.rev !== rev) continue;
+          put.review.run(r.questionId, userId, r.status, r.items ? JSON.stringify(r.items) : null, r.at);
+        }
       });
     },
 

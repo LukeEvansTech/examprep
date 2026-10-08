@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createApp } from "./app.ts";
 import { openDb } from "./db.ts";
 import type { BankPayload, BankQuestion, UserState } from "../shared/schema.ts";
+import { transcriptionRev } from "../shared/rev.ts";
 
 const KEY = "test-key-123";
 const auth = { authorization: `Bearer ${KEY}`, "content-type": "application/json" };
@@ -210,24 +211,24 @@ test("re-importing a changed transcription sends the question back for review", 
       interactive: { type: "hotspot", items: [{ label: "x", options: ["a", "b", answer], answer }] },
     },
   });
-  await app.request("/api/exams/xx-100", { method: "PUT", headers: auth, body: JSON.stringify(bank([hs("c")])) });
-  await app.request("/api/sync", {
-    method: "POST",
-    headers: auth,
-    body: JSON.stringify({ reviews: [{ questionId: "1", status: "reviewed", at: "2026-10-08T01:00:00Z" }] }),
+  const review = (answer: string, at: string) => ({
+    reviews: [{ questionId: "1", status: "reviewed", rev: transcriptionRev(hs(answer).enrichment!.interactive), at }],
   });
-  await app.request("/api/exams/xx-100", { method: "PUT", headers: auth, body: JSON.stringify(bank([hs("c")])) }); // unchanged
-  let s = (await (await app.request("/api/exams/xx-100/state")).json()) as UserState;
-  assert.equal(s.reviews.length, 1);
-  await app.request("/api/exams/xx-100", { method: "PUT", headers: auth, body: JSON.stringify(bank([hs("d")])) }); // changed
-  s = (await (await app.request("/api/exams/xx-100/state")).json()) as UserState;
-  assert.equal(s.reviews[0]?.status, "unreviewed");
-  // the old confirmation, retried by a device that queued it before the re-import, must lose
-  await app.request("/api/sync", {
-    method: "POST",
-    headers: auth,
-    body: JSON.stringify({ reviews: [{ questionId: "1", status: "reviewed", at: "2026-10-08T01:00:00Z" }] }),
-  });
-  s = (await (await app.request("/api/exams/xx-100/state")).json()) as UserState;
-  assert.equal(s.reviews[0]?.status, "unreviewed");
+  const put = (answer: string) =>
+    app.request("/api/exams/xx-100", { method: "PUT", headers: auth, body: JSON.stringify(bank([hs(answer)])) });
+  const sync = (body: object) => app.request("/api/sync", { method: "POST", headers: auth, body: JSON.stringify(body) });
+  const status = async () => ((await (await app.request("/api/exams/xx-100/state")).json()) as UserState).reviews[0]?.status;
+
+  await put("c");
+  await sync(review("c", "2026-10-08T01:00:00Z"));
+  await put("c"); // unchanged: the review stands
+  assert.equal(await status(), "reviewed");
+  await put("d"); // changed: back to the queue
+  assert.equal(await status(), "unreviewed");
+  await sync(review("c", "2026-10-08T01:00:00Z")); // an old confirmation retried
+  assert.equal(await status(), "unreviewed");
+  await sync(review("c", new Date(Date.now() + 60_000).toISOString())); // newer, but made on the old transcription
+  assert.equal(await status(), "unreviewed");
+  await sync(review("d", new Date(Date.now() + 120_000).toISOString())); // a review of the current one
+  assert.equal(await status(), "reviewed");
 });

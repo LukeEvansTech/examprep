@@ -135,16 +135,29 @@ function Interactive({
     <div class="interactive">
       {it.context && <pre class="context">{it.context}</pre>}
       {it.items.map((item, i) => (
-        <label class={`hs-item ${revealed ? (parts[i] === want[i] ? "right" : "wrong") : ""}`}>
-          <span class="hs-label">{item.label}</span>
-          <select value={parts[i]} disabled={locked} onChange={(e) => set(i, (e.target as HTMLSelectElement).value)}>
-            <option value="">Select…</option>
-            {item.options.map((o) => (
-              <option value={o}>{o}</option>
-            ))}
-          </select>
-          {revealed && parts[i] !== want[i] && <span class="hs-want">✓ {want[i]}</span>}
-        </label>
+        // Tappable options rather than a <select>: native drop-downs pop up full-width and
+        // badly placed with long options, and differently on every platform.
+        <fieldset class={`hs-item ${revealed ? (parts[i] === want[i] ? "right" : "wrong") : ""}`}>
+          <legend class="hs-label">{item.label}</legend>
+          <div class="hs-options" role="radiogroup">
+            {item.options.map((o) => {
+              const chosen = parts[i] === o;
+              const cls = [
+                "hs-option",
+                chosen && "chosen",
+                revealed && o === want[i] && "right",
+                revealed && chosen && o !== want[i] && "wrong",
+              ]
+                .filter(Boolean)
+                .join(" ");
+              return (
+                <button type="button" class={cls} role="radio" aria-checked={chosen} disabled={locked} onClick={() => set(i, o)}>
+                  {o}
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
       ))}
     </div>
   );

@@ -898,3 +898,50 @@ button.link {
   font-size: inherit;
   text-decoration: underline;
 }
+
+fieldset.hs-item {
+  margin: 0;
+  min-width: 0;
+}
+
+.hs-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hs-option {
+  min-height: 40px;
+  padding: 6px 12px;
+  text-align: left;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.hs-option.chosen {
+  background: var(--chosen);
+  border-color: var(--accent);
+}
+
+.hs-option.right {
+  background: var(--ok-bg);
+  border-color: var(--ok);
+}
+
+.hs-option.wrong {
+  background: var(--bad-bg);
+  border-color: var(--bad);
+}
+
+.hs-option:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.hs-option .tag {
+  margin-left: 6px;
+  font-family: inherit;
+  font-size: 0.7rem;
+  color: var(--muted);
+}

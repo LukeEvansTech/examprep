@@ -56,7 +56,8 @@ function grade(bank: BankPayload, state: UserState, s: Session, ids: string[]) {
     if (!q) continue; // archived by a re-import since the session started
     const given = s.given[id] ?? "";
     const correct = !!given && isCorrect(q, next, given);
-    answers.push({ id: crypto.randomUUID(), questionId: id, exam: s.exam, mode: s.mode, given, correct, at: at.toISOString() });
+    // One attempt per question per session: finishing the same session on two devices is idempotent.
+    answers.push({ id: `${s.id}:${id}`, questionId: id, exam: s.exam, mode: s.mode, given, correct, at: at.toISOString() });
     const row = nextSrs(q, s.exam, next, correct, at);
     srs.push(row);
     next = { ...next, srs: [...next.srs.filter((r) => r.questionId !== id), row] };

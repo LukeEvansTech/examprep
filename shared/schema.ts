@@ -113,6 +113,7 @@ export interface ReviewRow {
   questionId: string;
   status: "unreviewed" | "reviewed";
   items?: string[];
+  rev?: string; // transcriptionRev() of what the reviewer saw; the server rejects a stale one
   at: string;
 }
 
