@@ -23,18 +23,16 @@ export interface Session {
 export const sessionKey = (exam: string) => userKey(`session:${exam}`);
 export const MODE_NAME: Record<Mode, string> = { exam: "Exam", study: "Study", weak: "Weak spots", srs: "Spaced repetition" };
 
-// Every change is kept on this device straight away and queued for the server at most every
-// few seconds, so a session can be picked up on another device.
-let pushTimer: ReturnType<typeof setTimeout> | undefined;
+// Every change is kept on this device and queued for the server straight away; only the
+// sending is batched, so a session can be picked up on another device.
 export let lastWrite: Promise<unknown> = Promise.resolve(); // readers await this before loading a session
 export function saveSession(s: Session | null, exam: string, immediate = false) {
   const at = new Date().toISOString();
   const data = s && { ...s, updatedAt: at };
-  lastWrite = (data ? set(sessionKey(exam), data) : del(sessionKey(exam))).catch(() => {});
-  clearTimeout(pushTimer);
-  const push = () => void record({ sessions: [{ exam, data, at }] });
-  if (immediate) push();
-  else pushTimer = setTimeout(push, 3000);
+  lastWrite = Promise.all([
+    (data ? set(sessionKey(exam), data) : del(sessionKey(exam))).catch(() => {}),
+    record({ sessions: [{ exam, data, at }] }, { send: immediate }),
+  ]);
   return data;
 }
 

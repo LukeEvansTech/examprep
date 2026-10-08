@@ -2,7 +2,7 @@ import { render } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { get } from "idb-keyval";
 import type { BankPayload, BankQuestion, UserState } from "../../shared/schema.ts";
-import { loadBank, loadExams, loadState, online, pending, resetProgress, setUser, type ExamSummary } from "./store.ts";
+import { forgetUser, loadBank, loadExams, loadState, online, pending, resetProgress, setUser, type ExamSummary } from "./store.ts";
 import { pickQuestions, stats, topicStats, type Mode } from "./logic.ts";
 import { lastWrite, MODE_NAME, Player, saveSession, sessionKey, type Session } from "./Player.tsx";
 import { Review } from "./Review.tsx";
@@ -73,6 +73,7 @@ function Login({ providers }: { providers: Me["providers"] }) {
 
 async function signOut() {
   await fetch("/auth/logout", { method: "POST" }).catch(() => {});
+  await forgetUser();
   location.href = "/";
 }
 

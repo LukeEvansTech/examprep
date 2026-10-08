@@ -153,3 +153,23 @@ test("reset leaves a newer empty session so stale copies elsewhere lose", async 
   assert.equal(s.session?.data, null);
   assert.ok(s.session && s.session.at > "2026-10-08T01:00:00Z");
 });
+
+test("a pre-reset queue retried after a reset can't bring progress back", async () => {
+  const app = setup();
+  await app.request("/api/exams/xx-100", { method: "PUT", headers: auth, body: JSON.stringify(bank([question("1", 1)])) });
+  const old = {
+    answers: [{ id: "a1", questionId: "1", exam: "xx-100", mode: "study", given: "A", correct: true, at: "2026-01-01T00:00:00Z" }],
+    flags: [{ questionId: "1", flagged: true, at: "2026-01-01T00:00:00Z" }],
+  };
+  await app.request("/api/sync", { method: "POST", headers: auth, body: JSON.stringify(old) });
+  await app.request("/api/exams/xx-100/progress", { method: "DELETE" });
+  await app.request("/api/sync", { method: "POST", headers: auth, body: JSON.stringify(old) }); // the retry
+  const fresh = { answers: [{ ...old.answers[0], id: "a2", at: new Date(Date.now() + 1000).toISOString() }] };
+  await app.request("/api/sync", { method: "POST", headers: auth, body: JSON.stringify(fresh) });
+  const s = (await (await app.request("/api/exams/xx-100/state")).json()) as UserState;
+  assert.deepEqual(
+    s.answers.map((a) => a.id),
+    ["a2"],
+  );
+  assert.equal(s.flags.length, 0);
+});

@@ -100,6 +100,12 @@ CREATE TABLE IF NOT EXISTS sessions (
   at TEXT NOT NULL,
   PRIMARY KEY (user_id, exam)
 );
+CREATE TABLE IF NOT EXISTS resets (
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  exam TEXT NOT NULL,
+  at TEXT NOT NULL,
+  PRIMARY KEY (user_id, exam)
+);
 CREATE TABLE IF NOT EXISTS results (
   id TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id),
@@ -290,14 +296,23 @@ export function openDb(path: string) {
     },
 
     sync(userId: number, p: SyncPush) {
+      // Progress written before the exam's last reset (a device retrying an old queue) is dropped.
+      const cutoffs = new Map(
+        all<{ exam: string; at: string }>(`SELECT exam, at FROM resets WHERE user_id = ?`, userId).map((r) => [r.exam, r.at]),
+      );
+      const examOf = db.prepare(`SELECT exam FROM questions WHERE id = ?`);
+      const fresh = (exam: string | undefined, at: string) => !exam || !cutoffs.has(exam) || at > cutoffs.get(exam)!;
+      const freshQ = (questionId: string, at: string) => fresh((examOf.get(questionId) as { exam: string } | undefined)?.exam, at);
       tx(() => {
         for (const x of p.sessions ?? []) put.session.run(userId, x.exam, x.data == null ? null : JSON.stringify(x.data), x.at);
-        for (const r of p.results ?? []) put.result.run(r.id, userId, r.exam, r.at, r.total, r.correct, r.seconds);
-        for (const a of p.answers ?? []) put.answer.run(a.id, userId, a.questionId, a.exam, a.mode, a.given, a.correct ? 1 : 0, a.at);
-        for (const s of p.srs ?? []) put.srs.run(userId, s.questionId, s.exam, JSON.stringify(s.card), s.due, s.at);
+        for (const r of p.results ?? []) if (fresh(r.exam, r.at)) put.result.run(r.id, userId, r.exam, r.at, r.total, r.correct, r.seconds);
+        for (const a of p.answers ?? [])
+          if (fresh(a.exam, a.at)) put.answer.run(a.id, userId, a.questionId, a.exam, a.mode, a.given, a.correct ? 1 : 0, a.at);
+        for (const s of p.srs ?? [])
+          if (fresh(s.exam, s.at)) put.srs.run(userId, s.questionId, s.exam, JSON.stringify(s.card), s.due, s.at);
         for (const o of p.overrides ?? []) put.override.run(userId, o.questionId, o.answer, o.at);
         for (const n of p.notes ?? []) put.note.run(userId, n.questionId, n.text, n.at);
-        for (const f of p.flags ?? []) put.flag.run(userId, f.questionId, f.flagged ? 1 : 0, f.at);
+        for (const f of p.flags ?? []) if (freshQ(f.questionId, f.at)) put.flag.run(userId, f.questionId, f.flagged ? 1 : 0, f.at);
         for (const r of p.reviews ?? []) put.review.run(r.questionId, userId, r.status, r.items ? JSON.stringify(r.items) : null, r.at);
       });
     },
@@ -380,6 +395,9 @@ export function openDb(path: string) {
     // notes and answer overrides are the user's own knowledge, so they stay.
     resetProgress(userId: number, exam: string) {
       return tx(() => {
+        db.prepare(
+          `INSERT INTO resets (user_id, exam, at) VALUES (?, ?, ?) ON CONFLICT (user_id, exam) DO UPDATE SET at = excluded.at`,
+        ).run(userId, exam, new Date().toISOString());
         const inExam = `question_id IN (SELECT id FROM questions WHERE exam = ?)`;
         let n = 0;
         n += Number(db.prepare(`DELETE FROM answers WHERE user_id = ? AND exam = ?`).run(userId, exam).changes);

@@ -49,6 +49,10 @@ export async function setUser(id: number | null) {
   userId = id ?? (await safe(get<number>("lastUser"), undefined)) ?? 0;
 }
 export const userKey = (k: string) => `u${userId ?? 0}:${k}`;
+// Signing out drops the offline identity, so an offline launch afterwards shows nobody's data.
+export async function forgetUser() {
+  await safe(set("lastUser", 0), undefined);
+}
 
 // Private calls say whose data they carry. If the browser's sign-in has since changed to
 // someone else (another tab), the server answers 409 and this tab reloads as the new user
@@ -109,7 +113,14 @@ export async function loadState(code: string): Promise<UserState> {
   await flush();
   let state: UserState;
   try {
-    state = await fetchJson<UserState>(`/api/exams/${code}/state`);
+    // If a sync (from any tab) was acknowledged while this GET was in flight, the response may
+    // predate it; fetch again rather than cache a snapshot older than what the cache already has.
+    for (let attempt = 0; ; attempt++) {
+      const started = new Date().toISOString();
+      state = await fetchJson<UserState>(`/api/exams/${code}/state`);
+      const acked = (await safe(get<string>(userKey("ackAt")), undefined)) ?? "";
+      if (acked <= started || attempt === 2) break;
+    }
     await safe(set(userKey(`state:${code}`), state), undefined);
   } catch {
     state = (await safe(get<UserState>(userKey(`state:${code}`)), undefined)) ?? EMPTY;
@@ -149,7 +160,10 @@ function withBox(fn: (box: SyncPush) => SyncPush | Promise<SyncPush>): Promise<v
   return run;
 }
 
-export async function record(push: SyncPush) {
+let sendTimer: ReturnType<typeof setTimeout> | undefined;
+// Rows always reach the outbox at once (so a reload can't lose them); `send: false` only
+// delays transmission, batching rapid session saves into one request.
+export async function record(push: SyncPush, { send = true } = {}) {
   await withBox((box) => {
     const b = box as Rows;
     for (const [k, rows] of Object.entries(push) as [keyof SyncPush, QueuedRow[]][]) {
@@ -168,12 +182,15 @@ export async function record(push: SyncPush) {
     }
     return b as SyncPush;
   });
-  void flush();
+  clearTimeout(sendTimer);
+  if (send) void flush();
+  else sendTimer = setTimeout(() => void flush(), 3000);
 }
 
 // Fold acknowledged rows into each cached exam state before they leave the outbox, so a
 // reload with no signal still shows them.
 async function persistAcknowledged(sent: SyncPush) {
+  await safe(set(userKey("ackAt"), new Date().toISOString()), undefined);
   const prefix = userKey("state:");
   const stateKeys = ((await safe(keys(), [])) as IDBValidKey[]).filter((k): k is string => typeof k === "string" && k.startsWith(prefix));
   for (const key of stateKeys) {

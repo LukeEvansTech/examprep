@@ -255,7 +255,7 @@ function Reveal({
           class="override"
           onSubmit={(ev) => {
             ev.preventDefault();
-            saveOverride(draft.toUpperCase().replace(/[^A-Z]/g, "") || null);
+            saveOverride([...new Set(draft.toUpperCase().replace(/[^A-Z]/g, ""))].sort().join("") || null);
           }}
         >
           <label>
