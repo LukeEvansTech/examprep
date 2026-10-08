@@ -45,7 +45,7 @@ person to sign in takes over the progress recorded before sign-in was turned on.
 ## Uploading a bank
 
 `PUT /api/exams/<code>` with `Authorization: Bearer $EXAMPREP_UPLOAD_KEY` and a
-`BankPayload` body (see `shared/schema.ts`). Re-uploads merge by question id, so progress
+`BankPayload` body (see `shared/schema.ts`). Re-uploads merge by question ID, so progress
 survives and removed questions are archived. Images go to
 `PUT /api/exams/<code>/images/<name>`.
 

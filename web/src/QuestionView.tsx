@@ -209,7 +209,7 @@ function Reveal({
         <dd>
           {q.suggested ??
             (q.suggestedImage ? (
-              <a href={`/img/${exam}/${q.suggestedImage}`} target="_blank">
+              <a href={`/img/${exam}/${q.suggestedImage}`} target="_blank" rel="noopener noreferrer">
                 answer image
               </a>
             ) : (
@@ -240,7 +240,7 @@ function Reveal({
             <ul class="links">
               {e.sources.map((s) => (
                 <li>
-                  <a href={s.url} target="_blank" rel="noopener">
+                  <a href={s.url} target="_blank" rel="noopener noreferrer">
                     {s.title}
                   </a>
                 </li>
@@ -259,7 +259,7 @@ function Reveal({
           }}
         >
           <label>
-            I think it's
+            I think it&rsquo;s
             <input value={draft} maxLength={6} placeholder={want ?? ""} onInput={(ev) => setDraft((ev.target as HTMLInputElement).value)} />
           </label>
           <button type="submit">Save</button>

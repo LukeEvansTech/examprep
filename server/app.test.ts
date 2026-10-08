@@ -80,9 +80,9 @@ test("sync is idempotent and last-write-wins", async () => {
   const app = setup();
   await app.request("/api/exams/xx-100", { method: "PUT", headers: auth, body: JSON.stringify(bank([question("1", 1)])) });
   const push = (body: object) => app.request("/api/sync", { method: "POST", headers: auth, body: JSON.stringify(body) });
-  const ans = { id: "a1", questionId: "1", exam: "xx-100", mode: "study", given: "B", correct: false, at: "2026-10-08T01:00:00Z" };
-  await push({ answers: [ans], notes: [{ questionId: "1", text: "new", at: "2026-10-08T02:00:00Z" }] });
-  await push({ answers: [ans], notes: [{ questionId: "1", text: "stale", at: "2026-10-08T01:30:00Z" }] });
+  const answerRow = { id: "a1", questionId: "1", exam: "xx-100", mode: "study", given: "B", correct: false, at: "2026-10-08T01:00:00Z" };
+  await push({ answers: [answerRow], notes: [{ questionId: "1", text: "new", at: "2026-10-08T02:00:00Z" }] });
+  await push({ answers: [answerRow], notes: [{ questionId: "1", text: "stale", at: "2026-10-08T01:30:00Z" }] });
   await push({ overrides: [{ questionId: "1", answer: "C", at: "2026-10-08T01:00:00Z" }] });
   const s = (await (await app.request("/api/exams/xx-100/state")).json()) as UserState;
   assert.equal(s.answers.length, 1);

@@ -14,8 +14,8 @@ docker run -d --name "$NAME" -p "$PORT:8080" -e EXAMPREP_UPLOAD_KEY="$KEY" "$IMA
 trap 'docker logs "$NAME" || true; docker rm -f "$NAME" >/dev/null 2>&1 || true' EXIT
 
 for _ in $(seq 1 30); do
-  if curl -fsS "http://localhost:$PORT/api/health" >/dev/null 2>&1; then break; fi
-  sleep 1
+	if curl -fsS "http://localhost:$PORT/api/health" >/dev/null 2>&1; then break; fi
+	sleep 1
 done
 curl -fsS "http://localhost:$PORT/api/health" | grep -q '"ok":true'
 

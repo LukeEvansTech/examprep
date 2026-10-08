@@ -1,4 +1,4 @@
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { createHash } from "node:crypto";
 import type {
   AnswerRow,
@@ -124,6 +124,7 @@ export function openDb(path: string) {
   const userCols = (db.prepare(`PRAGMA table_info(users)`).all() as { name: string }[]).map((c) => c.name);
   if (!userCols.includes("email")) db.exec(`ALTER TABLE users ADD COLUMN email TEXT`);
 
+  const all = <T>(sql: string, ...args: SQLInputValue[]) => db.prepare(sql).all(...args) as unknown as T[];
   const hash = (token: string) => createHash("sha256").update(token).digest("hex");
   const later = (days: number) => new Date(Date.now() + days * 86400_000).toISOString();
 
@@ -303,10 +304,18 @@ export function openDb(path: string) {
 
     state(userId: number, exam: string): UserState {
       const inExam = `question_id IN (SELECT id FROM questions WHERE exam = ?)`;
-      const answers = (
-        db
-          .prepare(`SELECT id, question_id, exam, mode, given, correct, at FROM answers WHERE user_id = ? AND exam = ? ORDER BY at`)
-          .all(userId, exam) as any[]
+      const answers = all<{
+        id: string;
+        question_id: string;
+        exam: string;
+        mode: AnswerRow["mode"];
+        given: string;
+        correct: number;
+        at: string;
+      }>(
+        `SELECT id, question_id, exam, mode, given, correct, at FROM answers WHERE user_id = ? AND exam = ? ORDER BY at`,
+        userId,
+        exam,
       ).map(
         (r): AnswerRow => ({
           id: r.id,
@@ -318,27 +327,30 @@ export function openDb(path: string) {
           at: r.at,
         }),
       );
-      const srs = (
-        db.prepare(`SELECT question_id, exam, card, due, at FROM srs WHERE user_id = ? AND exam = ?`).all(userId, exam) as any[]
-      ).map(
-        (r): SrsRow => ({
-          questionId: r.question_id,
-          exam: r.exam,
-          card: JSON.parse(r.card),
-          due: r.due,
-          at: r.at,
-        }),
-      );
-      const overrides = (
-        db.prepare(`SELECT question_id, answer, at FROM overrides WHERE user_id = ? AND ${inExam}`).all(userId, exam) as any[]
+      const srs = all<{ question_id: string; exam: string; card: string; due: string; at: string }>(
+        `SELECT question_id, exam, card, due, at FROM srs WHERE user_id = ? AND exam = ?`,
+        userId,
+        exam,
+      ).map((r): SrsRow => ({ questionId: r.question_id, exam: r.exam, card: JSON.parse(r.card), due: r.due, at: r.at }));
+      const overrides = all<{ question_id: string; answer: string | null; at: string }>(
+        `SELECT question_id, answer, at FROM overrides WHERE user_id = ? AND ${inExam}`,
+        userId,
+        exam,
       ).map((r): OverrideRow => ({ questionId: r.question_id, answer: r.answer, at: r.at }));
-      const notes = (db.prepare(`SELECT question_id, text, at FROM notes WHERE user_id = ? AND ${inExam}`).all(userId, exam) as any[]).map(
-        (r): NoteRow => ({ questionId: r.question_id, text: r.text, at: r.at }),
-      );
-      const flags = (
-        db.prepare(`SELECT question_id, flagged, at FROM flags WHERE user_id = ? AND ${inExam}`).all(userId, exam) as any[]
+      const notes = all<{ question_id: string; text: string; at: string }>(
+        `SELECT question_id, text, at FROM notes WHERE user_id = ? AND ${inExam}`,
+        userId,
+        exam,
+      ).map((r): NoteRow => ({ questionId: r.question_id, text: r.text, at: r.at }));
+      const flags = all<{ question_id: string; flagged: number; at: string }>(
+        `SELECT question_id, flagged, at FROM flags WHERE user_id = ? AND ${inExam}`,
+        userId,
+        exam,
       ).map((r): FlagRow => ({ questionId: r.question_id, flagged: !!r.flagged, at: r.at }));
-      const reviews = (db.prepare(`SELECT question_id, status, items, at FROM reviews WHERE ${inExam}`).all(exam) as any[]).map(
+      const reviews = all<{ question_id: string; status: ReviewRow["status"]; items: string | null; at: string }>(
+        `SELECT question_id, status, items, at FROM reviews WHERE ${inExam}`,
+        exam,
+      ).map(
         (r): ReviewRow => ({
           questionId: r.question_id,
           status: r.status,

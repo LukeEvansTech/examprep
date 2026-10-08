@@ -116,7 +116,9 @@ export function applyPush(s: UserState, p: SyncPush): UserState {
 }
 
 // Rows keyed by question (or exam, for sessions) only need their newest version queued.
-const KEY: Partial<Record<keyof SyncPush, (r: any) => string>> = {
+type QueuedRow = { exam?: string; questionId?: string };
+type Rows = Record<string, QueuedRow[]>;
+const KEY: Partial<Record<keyof SyncPush, (r: QueuedRow) => string | undefined>> = {
   sessions: (r) => r.exam,
   srs: (r) => r.questionId,
   overrides: (r) => r.questionId,
@@ -128,7 +130,7 @@ const KEY: Partial<Record<keyof SyncPush, (r: any) => string>> = {
 // Every read-modify-write of the outbox goes through this queue; two overlapping writers
 // (an answer and a session save from the same click) would otherwise drop one another's rows.
 let boxLock: Promise<unknown> = Promise.resolve();
-function withBox<T>(fn: (box: SyncPush) => SyncPush | Promise<SyncPush>): Promise<void> {
+function withBox(fn: (box: SyncPush) => SyncPush | Promise<SyncPush>): Promise<void> {
   const run = boxLock.then(async () => {
     const next = await fn(await outbox());
     await safe(set("outbox", next), undefined);
@@ -140,12 +142,13 @@ function withBox<T>(fn: (box: SyncPush) => SyncPush | Promise<SyncPush>): Promis
 
 export async function record(push: SyncPush) {
   await withBox((box) => {
-    for (const [k, rows] of Object.entries(push) as [keyof SyncPush, any[]][]) {
+    const b = box as Rows;
+    for (const [k, rows] of Object.entries(push) as [keyof SyncPush, QueuedRow[]][]) {
       const key = KEY[k];
-      const merged = [...(box[k] ?? []), ...rows];
-      (box[k] as any[]) = key ? [...new Map(merged.map((r) => [key(r), r])).values()] : merged;
+      const merged = [...(b[k] ?? []), ...rows];
+      b[k] = key ? [...new Map(merged.map((r) => [key(r), r])).values()] : merged;
     }
-    return box;
+    return b as SyncPush;
   });
   void flush();
 }
@@ -165,11 +168,12 @@ export function flush(): Promise<void> {
       if (!r.ok) return;
       // Only drop what was sent; rows recorded (or replaced) during the request stay queued.
       await withBox((now) => {
-        for (const k of Object.keys(box) as (keyof SyncPush)[]) {
-          const sent = new Set(box[k]!.map((r) => JSON.stringify(r)));
-          (now[k] as any[]) = (now[k] ?? []).filter((r: unknown) => !sent.has(JSON.stringify(r)));
+        const n = now as Rows;
+        for (const [k, rows] of Object.entries(box as Rows)) {
+          const sent = new Set(rows.map((r) => JSON.stringify(r)));
+          n[k] = (n[k] ?? []).filter((r) => !sent.has(JSON.stringify(r)));
         }
-        return now;
+        return n as SyncPush;
       });
       online.value = true;
     } catch {

@@ -82,7 +82,7 @@ export function createAuth(db: Db, opts: AuthOptions) {
     return userId;
   }
 
-  function routes(app: Hono<any>) {
+  function routes(app: Hono<{ Variables: { userId: number } }>) {
     app.get("/api/me", (c) => {
       const providers = opts.providers.map(({ id, name }) => ({ id, name }));
       if (!enabled) return c.json({ user: { name: "Local", local: true }, providers });

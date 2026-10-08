@@ -31,7 +31,7 @@ const empty = (): UserState => ({
   reviews: [],
   ourVotes: {},
 });
-const ans = (questionId: string, correct: boolean, at: string) => ({
+const answerRow = (questionId: string, correct: boolean, at: string) => ({
   id: `${questionId}-${at}`,
   questionId,
   exam: "x",
@@ -54,7 +54,11 @@ test("togglePick: single replaces, choose-two toggles and caps", () => {
 test("topic stats use each question's latest attempt", () => {
   const qs = [q("1", "T1"), q("2", "T1"), q("3", "T2")];
   const s = empty();
-  s.answers = [ans("1", false, "2026-10-08T01:00:00Z"), ans("1", true, "2026-10-08T02:00:00Z"), ans("2", false, "2026-10-08T01:00:00Z")];
+  s.answers = [
+    answerRow("1", false, "2026-10-08T01:00:00Z"),
+    answerRow("1", true, "2026-10-08T02:00:00Z"),
+    answerRow("2", false, "2026-10-08T01:00:00Z"),
+  ];
   assert.deepEqual(topicStats(qs, s), [
     { topic: "T1", total: 2, seen: 2, correct: 1 },
     { topic: "T2", total: 1, seen: 0, correct: 0 },
@@ -66,7 +70,7 @@ test("topic stats use each question's latest attempt", () => {
 test("weak spots = last wrong or flagged; override changes what counts as right", () => {
   const qs = [q("1", "T"), q("2", "T"), q("3", "T")];
   const s = empty();
-  s.answers = [ans("1", false, "2026-10-08T01:00:00Z"), ans("2", true, "2026-10-08T01:00:00Z")];
+  s.answers = [answerRow("1", false, "2026-10-08T01:00:00Z"), answerRow("2", true, "2026-10-08T01:00:00Z")];
   s.flags = [{ questionId: "3", flagged: true, at: "2026-10-08T01:00:00Z" }];
   assert.deepEqual(
     pickQuestions(qs, s, { mode: "weak", order: "number" }).map((x) => x.id),
