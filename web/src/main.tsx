@@ -12,6 +12,7 @@ import {
   resetProgress,
   setUser,
   signedOut,
+  storageFailed,
   type ExamSummary,
 } from "./store.ts";
 import { pickQuestions, stats, topicStats, type Mode } from "./logic.ts";
@@ -102,6 +103,12 @@ async function signOut() {
 
 function SyncBadge() {
   const n = pending.value;
+  if (storageFailed.value)
+    return (
+      <div class="sync off" title="This device refused to save the offline queue; it is held in this tab until it syncs.">
+        Storage full · keep this tab open{n ? ` · ${n} queued` : ""}
+      </div>
+    );
   return (
     <div class={`sync ${online.value ? "" : "off"}`} title={online.value ? "Synced to server" : "Offline: changes are kept on this device"}>
       {online.value ? (n ? `Syncing ${n}…` : "Synced") : `Offline${n ? ` · ${n} queued` : ""}`}

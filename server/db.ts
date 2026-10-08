@@ -247,7 +247,15 @@ export function openDb(path: string) {
           `INSERT INTO questions (id, exam, number, data, archived) VALUES (?, ?, ?, ?, 0)
            ON CONFLICT (id) DO UPDATE SET number = excluded.number, data = excluded.data, archived = 0`,
         );
-        for (const q of questions) up.run(q.id, p.exam.code, q.number, JSON.stringify(q));
+        // A changed transcription invalidates the review (and any corrected answers) made against the old one.
+        const prior = db.prepare(`SELECT data FROM questions WHERE id = ?`);
+        const dropReview = db.prepare(`DELETE FROM reviews WHERE question_id = ?`);
+        for (const q of questions) {
+          const old = prior.get(q.id) as { data: string } | undefined;
+          const was = old ? (JSON.parse(old.data) as BankQuestion).enrichment?.interactive : undefined;
+          if (old && JSON.stringify(was ?? null) !== JSON.stringify(q.enrichment?.interactive ?? null)) dropReview.run(q.id);
+          up.run(q.id, p.exam.code, q.number, JSON.stringify(q));
+        }
         const seen = new Set(questions.map((q) => q.id));
         const gone = [...before].filter((id) => !seen.has(id));
         const arch = db.prepare(`UPDATE questions SET archived = 1 WHERE id = ?`);

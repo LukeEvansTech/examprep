@@ -194,3 +194,32 @@ test("uploads that aren't real images are refused, and the type comes from the b
   assert.equal(got.headers.get("x-content-type-options"), "nosniff");
   assert.match(got.headers.get("cache-control") ?? "", /private/);
 });
+
+test("re-importing a changed transcription sends the question back for review", async () => {
+  const app = setup();
+  const hs = (answer: string): BankQuestion => ({
+    ...question("1", 1),
+    kind: "hotspot",
+    enrichment: {
+      id: "1",
+      explanation: "",
+      docsAnswer: null,
+      docsVerdict: "agrees",
+      sources: [],
+      review: "unreviewed",
+      interactive: { type: "hotspot", items: [{ label: "x", options: ["a", "b", answer], answer }] },
+    },
+  });
+  await app.request("/api/exams/xx-100", { method: "PUT", headers: auth, body: JSON.stringify(bank([hs("c")])) });
+  await app.request("/api/sync", {
+    method: "POST",
+    headers: auth,
+    body: JSON.stringify({ reviews: [{ questionId: "1", status: "reviewed", at: "2026-10-08T01:00:00Z" }] }),
+  });
+  await app.request("/api/exams/xx-100", { method: "PUT", headers: auth, body: JSON.stringify(bank([hs("c")])) }); // unchanged
+  let s = (await (await app.request("/api/exams/xx-100/state")).json()) as UserState;
+  assert.equal(s.reviews.length, 1);
+  await app.request("/api/exams/xx-100", { method: "PUT", headers: auth, body: JSON.stringify(bank([hs("d")])) }); // changed
+  s = (await (await app.request("/api/exams/xx-100/state")).json()) as UserState;
+  assert.equal(s.reviews.length, 0);
+});

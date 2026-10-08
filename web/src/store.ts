@@ -151,7 +151,12 @@ export async function loadState(code: string): Promise<UserState> {
   return merged;
 }
 
+// If IndexedDB refuses a write (storage full, private mode), the queue lives on in memory for
+// this tab, flushes from there, and the badge warns that closing the tab would lose it.
+export const storageFailed = signal(false);
+let memoryBox: SyncPush | null = null;
 async function outbox(): Promise<SyncPush> {
+  if (memoryBox) return memoryBox;
   return (await safe(get<SyncPush>(userKey("outbox")), undefined)) ?? {};
 }
 
@@ -180,7 +185,14 @@ function locked(body: () => Promise<void>): Promise<void> {
 function withBox(fn: (box: SyncPush) => SyncPush | Promise<SyncPush>): Promise<void> {
   return locked(async () => {
     const next = await fn(await outbox());
-    await safe(set(userKey("outbox"), next), undefined);
+    try {
+      await set(userKey("outbox"), next);
+      memoryBox = null;
+      storageFailed.value = false;
+    } catch {
+      memoryBox = next;
+      storageFailed.value = true;
+    }
     pending.value = count(next);
   });
 }
