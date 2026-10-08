@@ -244,8 +244,8 @@ function ExamHome({
       )
     )
       return;
-    saveSession(null, code, true);
     if (!(await resetProgress(code))) return alert("Couldn't reach the server. Try again when you're online.");
+    saveSession(null, code, true);
     setState((s) => ({ ...s, session: null, results: [], answers: [], srs: [], flags: [] }));
     onReset();
   };

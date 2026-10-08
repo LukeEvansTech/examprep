@@ -5,6 +5,6 @@ export default defineConfig({
   plugins: [preact()],
   server: {
     host: true,
-    proxy: { "/api": "http://localhost:8787", "/img": "http://localhost:8787" },
+    proxy: { "/api": "http://localhost:8787", "/img": "http://localhost:8787", "/auth": "http://localhost:8787" },
   },
 });

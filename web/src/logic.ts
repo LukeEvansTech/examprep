@@ -131,3 +131,14 @@ export function topicStats(qs: BankQuestion[], s: UserState) {
   }
   return [...by.values()].sort((a, b) => a.topic.localeCompare(b.topic));
 }
+
+// A re-import can archive questions a saved session still lists: drop them and keep the
+// position on the same question (or the nearest one left).
+export function reconcile<S extends { ids: string[]; index: number }>(s: S, bank: { questions: { id: string }[] }): S {
+  const live = s.ids.filter((id) => bank.questions.some((q) => q.id === id));
+  if (live.length === s.ids.length) return s;
+  const here = s.ids[s.index];
+  const before = s.ids.slice(0, s.index).filter((id) => live.includes(id)).length;
+  const index = live.includes(here) ? live.indexOf(here) : Math.min(before, Math.max(0, live.length - 1));
+  return { ...s, ids: live, index };
+}

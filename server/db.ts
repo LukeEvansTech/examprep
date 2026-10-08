@@ -386,7 +386,15 @@ export function openDb(path: string) {
         n += Number(db.prepare(`DELETE FROM srs WHERE user_id = ? AND exam = ?`).run(userId, exam).changes);
         n += Number(db.prepare(`DELETE FROM flags WHERE user_id = ? AND ${inExam}`).run(userId, exam).changes);
         n += Number(db.prepare(`DELETE FROM results WHERE user_id = ? AND exam = ?`).run(userId, exam).changes);
-        n += Number(db.prepare(`DELETE FROM sessions WHERE user_id = ? AND exam = ?`).run(userId, exam).changes);
+        // A timestamped empty session, not a deleted row, so a stale copy on another device loses.
+        n += Number(
+          db
+            .prepare(
+              `INSERT INTO sessions (user_id, exam, data, at) VALUES (?, ?, NULL, ?)
+               ON CONFLICT (user_id, exam) DO UPDATE SET data = NULL, at = excluded.at`,
+            )
+            .run(userId, exam, new Date().toISOString()).changes,
+        );
         return { deleted: n };
       });
     },

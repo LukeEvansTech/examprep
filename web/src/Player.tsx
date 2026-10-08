@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { del, set } from "idb-keyval";
 import type { AnswerRow, BankPayload, UserState } from "../../shared/schema.ts";
-import { isCorrect, isInteractive, nextSrs, SEP, togglePick, type Mode } from "./logic.ts";
+import { isCorrect, isInteractive, nextSrs, playable, reconcile, SEP, togglePick, type Mode } from "./logic.ts";
 import { QuestionView, toggleFlagFor } from "./QuestionView.tsx";
 import { record, userKey } from "./store.ts";
 
@@ -74,7 +74,7 @@ const typing = (e: KeyboardEvent) => {
 };
 
 export function Player({ bank, state, setState, initial, onExit, ephemeral }: Props) {
-  const [s, setS] = useState(initial);
+  const [s, setS] = useState(() => reconcile(initial, bank));
   const latest = useRef(s); // the timer's expiry callback must grade the answers given since it started
   latest.current = s;
   const update = (fn: (s: Session) => Session, immediate = false) =>
@@ -144,9 +144,11 @@ export function Player({ bank, state, setState, initial, onExit, ephemeral }: Pr
   // or every hotspot box filled. "Show answer" without one counts as a miss for SRS.
   const complete = (g: string) =>
     isInteractive(q) ? g.split(SEP).length === q.enrichment!.interactive!.items.length && g.split(SEP).every(Boolean) : g.length >= q.pick;
+  // Questions still waiting for transcription review (reachable from Browse) can be read
+  // but not scored, so they never touch history or the SRS schedule.
   const reveal = (g: string) => {
     const next = { ...s, given: { ...s.given, [q.id]: g } };
-    setState((st) => grade(bank, st, next, [q.id]));
+    if (playable(q, state)) setState((st) => grade(bank, st, next, [q.id]));
     update((c) => ({ ...c, given: { ...c.given, [q.id]: g }, checked: { ...c.checked, [q.id]: true } }), true);
   };
   const pick = (g: string) => {

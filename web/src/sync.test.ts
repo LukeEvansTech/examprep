@@ -49,3 +49,9 @@ test("applyPush keeps the newer of two writes", () => {
   applyPush(s, { notes: [{ questionId: "1", text: "old", at }] });
   assert.equal(s.notes[0].text, "new");
 });
+
+test("duplicate queued results from two tabs are merged once", () => {
+  const r = { id: "s1", exam: "a", at, total: 3, correct: 2, seconds: 60 };
+  const s = applyPush(empty(), { results: [r, { ...r }] });
+  assert.equal(s.results.length, 1);
+});

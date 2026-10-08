@@ -1,9 +1,18 @@
 // App shell, hashed assets and question images, so a session works with no signal.
 // Bank and progress data are cached by the app itself in IndexedDB (src/store.ts).
-const CACHE = "examprep-v3";
+const CACHE = "examprep-v4";
 
+// Precache the shell and the hashed bundles it references, so the very first offline launch works.
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["/", "/manifest.webmanifest", "/icon.svg"])));
+  e.waitUntil(
+    (async () => {
+      const cache = await caches.open(CACHE);
+      await cache.addAll(["/", "/manifest.webmanifest", "/icon.svg"]);
+      const html = await (await cache.match("/")).text();
+      const assets = [...new Set(html.match(/\/assets\/[^"']+/g) ?? [])];
+      await cache.addAll(assets);
+    })(),
+  );
   self.skipWaiting();
 });
 
@@ -18,6 +27,22 @@ const cacheFirst = async (req) => {
   const res = await fetch(req);
   if (res.ok) (await caches.open(CACHE)).put(req, res.clone());
   return res;
+};
+
+const staleWhileRevalidate = async (req, e) => {
+  const cache = await caches.open(CACHE);
+  const hit = await cache.match(req);
+  const refresh = fetch(req)
+    .then((res) => {
+      if (res.ok) cache.put(req, res.clone());
+      return res;
+    })
+    .catch(() => hit);
+  if (hit) {
+    e.waitUntil(refresh);
+    return hit;
+  }
+  return refresh;
 };
 
 self.addEventListener("fetch", (e) => {
@@ -38,7 +63,8 @@ self.addEventListener("fetch", (e) => {
     );
     return;
   }
-  if (url.pathname.startsWith("/assets/") || url.pathname.startsWith("/img/") || url.pathname.startsWith("/icon")) {
-    e.respondWith(cacheFirst(e.request));
-  }
+  // Hashed bundles never change; images can be re-uploaded under the same name, so serve the
+  // cached copy at once and refresh it in the background.
+  if (url.pathname.startsWith("/assets/") || url.pathname.startsWith("/icon")) e.respondWith(cacheFirst(e.request));
+  else if (url.pathname.startsWith("/img/")) e.respondWith(staleWhileRevalidate(e.request, e));
 });

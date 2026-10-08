@@ -50,8 +50,20 @@ export async function setUser(id: number | null) {
 }
 export const userKey = (k: string) => `u${userId ?? 0}:${k}`;
 
+// Private calls say whose data they carry. If the browser's sign-in has since changed to
+// someone else (another tab), the server answers 409 and this tab reloads as the new user
+// rather than writing the old user's queue into the new account.
+function api(url: string, init: RequestInit = {}) {
+  const headers = new Headers(init.headers);
+  if (userId) headers.set("x-examprep-user", String(userId));
+  return fetch(url, { ...init, headers }).then((r) => {
+    if (r.status === 409) location.reload();
+    return r;
+  });
+}
+
 async function fetchJson<T>(url: string): Promise<T> {
-  const r = await fetch(url);
+  const r = await api(url);
   if (!r.ok) throw new Error(`${url}: ${r.status}`);
   return r.json();
 }
@@ -112,7 +124,7 @@ async function outbox(): Promise<SyncPush> {
 const count = (p: SyncPush) => Object.values(p).reduce((n, rows) => n + (rows?.length ?? 0), 0);
 
 // Rows keyed by question (or exam, for sessions) only need their newest version queued.
-type QueuedRow = { exam?: string; questionId?: string };
+type QueuedRow = { exam?: string; questionId?: string; at?: string };
 type Rows = Record<string, QueuedRow[]>;
 const KEY: Partial<Record<keyof SyncPush, (r: QueuedRow) => string | undefined>> = {
   sessions: (r) => r.exam,
@@ -143,7 +155,16 @@ export async function record(push: SyncPush) {
     for (const [k, rows] of Object.entries(push) as [keyof SyncPush, QueuedRow[]][]) {
       const key = KEY[k];
       const merged = [...(b[k] ?? []), ...rows];
-      b[k] = key ? [...new Map(merged.map((r) => [key(r), r])).values()] : merged;
+      if (!key) {
+        b[k] = merged;
+        continue;
+      }
+      const newest = new Map<string | undefined, QueuedRow>();
+      for (const r of merged) {
+        const prev = newest.get(key(r));
+        if (!prev || (r.at ?? "") >= (prev.at ?? "")) newest.set(key(r), r);
+      }
+      b[k] = [...newest.values()];
     }
     return b as SyncPush;
   });
@@ -170,7 +191,7 @@ export function flush(): Promise<void> {
       const box = await outbox();
       pending.value = count(box);
       if (!pending.value) return;
-      const r = await fetch("/api/sync", {
+      const r = await api("/api/sync", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(box),
@@ -201,8 +222,13 @@ export function flush(): Promise<void> {
 export async function resetProgress(code: string): Promise<boolean> {
   await flush();
   try {
-    const r = await fetch(`/api/exams/${code}/progress`, { method: "DELETE" });
-    return r.ok;
+    const r = await api(`/api/exams/${code}/progress`, { method: "DELETE" });
+    if (!r.ok) return false;
+    // Mirror the reset in this device's offline copy too (notes and overrides stay).
+    const key = userKey(`state:${code}`);
+    const cached = await safe(get<UserState>(key), undefined);
+    if (cached) await safe(set(key, { ...cached, session: null, results: [], answers: [], srs: [], flags: [] }), undefined);
+    return true;
   } catch {
     return false;
   }

@@ -34,6 +34,8 @@ export function createApp({ db, uploadKey, auth: authOpts }: AppOptions) {
     if (c.req.method === "PUT" && keyMatches(c, uploadKey)) return next();
     const userId = auth.userFor(c);
     if (userId == null) return c.json({ error: "sign in required" }, 401);
+    const claimed = c.req.header("x-examprep-user");
+    if (claimed && Number(claimed) !== userId) return c.json({ error: "signed-in user changed" }, 409);
     c.set("userId", userId);
     await next();
   };

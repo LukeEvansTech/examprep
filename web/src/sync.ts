@@ -21,9 +21,17 @@ export function forExam(p: SyncPush, code: string, ids: Set<string>): SyncPush {
 // Mirrors the server's merge rules closely enough for display between syncs.
 export function applyPush(s: UserState, p: SyncPush): UserState {
   const seen = new Set(s.answers.map((a) => a.id));
-  for (const a of p.answers ?? []) if (!seen.has(a.id)) s.answers.push(a);
+  for (const a of p.answers ?? []) {
+    if (seen.has(a.id)) continue;
+    seen.add(a.id);
+    s.answers.push(a);
+  }
   const seenResults = new Set(s.results.map((r) => r.id));
-  for (const r of p.results ?? []) if (!seenResults.has(r.id)) s.results.push(r);
+  for (const r of p.results ?? []) {
+    if (seenResults.has(r.id)) continue;
+    seenResults.add(r.id);
+    s.results.push(r);
+  }
   for (const x of p.sessions ?? []) if (!s.session || x.at > s.session.at) s.session = x;
   const upsert = <T extends { questionId: string; at: string }>(list: T[], rows: T[] = []) => {
     for (const r of rows) {

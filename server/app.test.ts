@@ -129,5 +129,27 @@ test("sessions resume across devices (newest wins) and reset keeps notes", async
   const r = await app.request("/api/exams/xx-100/progress", { method: "DELETE" });
   assert.equal(r.status, 200);
   s = (await (await app.request("/api/exams/xx-100/state")).json()) as UserState;
-  assert.deepEqual([s.session, s.results.length, s.answers.length, s.flags.length, s.notes.length], [null, 0, 0, 0, 1]);
+  assert.deepEqual([s.session?.data, s.results.length, s.answers.length, s.flags.length, s.notes.length], [null, 0, 0, 0, 1]);
+});
+
+test("a request claiming another user's data is refused", async () => {
+  const app = setup();
+  const ok = await app.request("/api/exams", { headers: { "x-examprep-user": "1" } });
+  assert.equal(ok.status, 200);
+  const stale = await app.request("/api/sync", { method: "POST", headers: { ...auth, "x-examprep-user": "2" }, body: "{}" });
+  assert.equal(stale.status, 409);
+});
+
+test("reset leaves a newer empty session so stale copies elsewhere lose", async () => {
+  const app = setup();
+  await app.request("/api/exams/xx-100", { method: "PUT", headers: auth, body: JSON.stringify(bank([question("1", 1)])) });
+  await app.request("/api/sync", {
+    method: "POST",
+    headers: auth,
+    body: JSON.stringify({ sessions: [{ exam: "xx-100", data: { index: 2 }, at: "2026-10-08T01:00:00Z" }] }),
+  });
+  await app.request("/api/exams/xx-100/progress", { method: "DELETE" });
+  const s = (await (await app.request("/api/exams/xx-100/state")).json()) as UserState;
+  assert.equal(s.session?.data, null);
+  assert.ok(s.session && s.session.at > "2026-10-08T01:00:00Z");
 });

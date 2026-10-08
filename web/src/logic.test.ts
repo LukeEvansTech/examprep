@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { BankQuestion, UserState } from "../../shared/schema.ts";
-import { isCorrect, pickQuestions, stats, togglePick, topicStats } from "./logic.ts";
+import { isCorrect, pickQuestions, reconcile, stats, togglePick, topicStats } from "./logic.ts";
 
 const q = (id: string, topic: string, over: Partial<BankQuestion> = {}): BankQuestion => ({
   id,
@@ -103,4 +103,12 @@ test("unreviewed hotspot questions are left out of practice", () => {
 test("image-only questions without a transcription never enter practice", () => {
   const bare = q("7", "T", { kind: "hotspot", choices: [], suggested: null, suggestedImage: "x.png" });
   assert.equal(pickQuestions([bare], empty(), { mode: "exam" }).length, 0);
+});
+
+test("reconcile keeps the position on the same question after a re-import archives some", () => {
+  const bank = { questions: [{ id: "b" }, { id: "c" }] };
+  assert.deepEqual(reconcile({ ids: ["a", "b", "c"], index: 1 }, bank), { ids: ["b", "c"], index: 0 });
+  assert.deepEqual(reconcile({ ids: ["a", "b", "x"], index: 2 }, bank), { ids: ["b"], index: 0 });
+  const same = { ids: ["b", "c"], index: 1 };
+  assert.equal(reconcile(same, bank), same);
 });
