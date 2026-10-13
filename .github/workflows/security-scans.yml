@@ -17,7 +17,7 @@ jobs:
     permissions:
       contents: read
       security-events: write
-    uses: LukeEvansTech/shared-workflows/.github/workflows/security-scans.yml@e9b04d22ec529dd718aee0f38df44053149e13e8 # v1
+    uses: LukeEvansTech/shared-workflows/.github/workflows/security-scans.yml@4f77b1856421438fefe16f69ed4dd682a445f7b1 # v1
     with:
       checkov-frameworks: github_actions
       trivy-scanners: vuln,secret,misconfig
